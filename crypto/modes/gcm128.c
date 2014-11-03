@@ -51,6 +51,7 @@
 
 #include <openssl/crypto.h>
 #include "modes_lcl.h"
+#include <byte_order.h>
 #include <string.h>
 
 #ifndef MODES_DEBUG
@@ -147,7 +148,6 @@ static void gcm_gmult_8bit(u64 Xi[2], const u128 Htable[256])
 	u128 Z = { 0, 0};
 	const u8 *xi = (const u8 *)Xi+15;
 	size_t rem, n = *xi;
-	const union { long one; char little; } is_endian = {1};
 	__fips_constseg
 	static const size_t rem_8bit[256] = {
 		PACK(0x0000), PACK(0x01C2), PACK(0x0384), PACK(0x0246),
@@ -232,23 +232,8 @@ static void gcm_gmult_8bit(u64 Xi[2], const u128 Htable[256])
 			Z.hi ^= (u64)rem_8bit[rem]<<32;
 	}
 
-	if (is_endian.little) {
-#ifdef BSWAP8
-		Xi[0] = BSWAP8(Z.hi);
-		Xi[1] = BSWAP8(Z.lo);
-#else
-		u8 *p = (u8 *)Xi;
-		u32 v;
-		v = (u32)(Z.hi>>32);	PUTU32(p,v);
-		v = (u32)(Z.hi);	PUTU32(p+4,v);
-		v = (u32)(Z.lo>>32);	PUTU32(p+8,v);
-		v = (u32)(Z.lo);	PUTU32(p+12,v);
-#endif
-	}
-	else {
-		Xi[0] = Z.hi;
-		Xi[1] = Z.lo;
-	}
+	Xi[0] = HTOBE64(Z.hi);
+	Xi[1] = HTOBE64(Z.lo);
 }
 #define GCM_MUL(ctx,Xi)   gcm_gmult_8bit(ctx->Xi.u,ctx->Htable)
 
@@ -339,7 +324,6 @@ static void gcm_gmult_4bit(u64 Xi[2], const u128 Htable[16])
 	u128 Z;
 	int cnt = 15;
 	size_t rem, nlo, nhi;
-	const union { long one; char little; } is_endian = {1};
 
 	nlo  = ((const u8 *)Xi)[15];
 	nhi  = nlo>>4;
@@ -378,23 +362,8 @@ static void gcm_gmult_4bit(u64 Xi[2], const u128 Htable[16])
 		Z.lo ^= Htable[nlo].lo;
 	}
 
-	if (is_endian.little) {
-#ifdef BSWAP8
-		Xi[0] = BSWAP8(Z.hi);
-		Xi[1] = BSWAP8(Z.lo);
-#else
-		u8 *p = (u8 *)Xi;
-		u32 v;
-		v = (u32)(Z.hi>>32);	PUTU32(p,v);
-		v = (u32)(Z.hi);	PUTU32(p+4,v);
-		v = (u32)(Z.lo>>32);	PUTU32(p+8,v);
-		v = (u32)(Z.lo);	PUTU32(p+12,v);
-#endif
-	}
-	else {
-		Xi[0] = Z.hi;
-		Xi[1] = Z.lo;
-	}
+	Xi[0] = HTOBE64(Z.hi);
+	Xi[1] = HTOBE64(Z.lo);
 }
 
 #if !defined(OPENSSL_SMALL_FOOTPRINT)
@@ -411,7 +380,6 @@ static void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],
     u128 Z;
     int cnt;
     size_t rem, nlo, nhi;
-    const union { long one; char little; } is_endian = {1};
 
 #if 1
     do {
@@ -549,23 +517,9 @@ static void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],
 	Z.hi ^= ((u64)rem_8bit[rem<<4])<<48;
 #endif
 
-	if (is_endian.little) {
-#ifdef BSWAP8
-		Xi[0] = BSWAP8(Z.hi);
-		Xi[1] = BSWAP8(Z.lo);
-#else
-		u8 *p = (u8 *)Xi;
-		u32 v;
-		v = (u32)(Z.hi>>32);	PUTU32(p,v);
-		v = (u32)(Z.hi);	PUTU32(p+4,v);
-		v = (u32)(Z.lo>>32);	PUTU32(p+8,v);
-		v = (u32)(Z.lo);	PUTU32(p+12,v);
-#endif
-	}
-	else {
-		Xi[0] = Z.hi;
-		Xi[1] = Z.lo;
-	}
+	Xi[0] = HTOBE64(Z.hi);
+	Xi[1] = HTOBE64(Z.lo);
+
     } while (inp+=16, len-=16);
 }
 #endif
@@ -591,28 +545,12 @@ static void gcm_gmult_1bit(u64 Xi[2],const u64 H[2])
 	long X;
 	int  i,j;
 	const long *xi = (const long *)Xi;
-	const union { long one; char little; } is_endian = {1};
 
 	V.hi = H[0];	/* H is in host byte order, no byte swapping */
 	V.lo = H[1];
 
 	for (j=0; j<16/sizeof(long); ++j) {
-		if (is_endian.little) {
-			if (sizeof(long)==8) {
-#ifdef BSWAP8
-				X = (long)(BSWAP8(xi[j]));
-#else
-				const u8 *p = (const u8 *)(xi+j);
-				X = (long)((u64)GETU32(p)<<32|GETU32(p+4));
-#endif
-			}
-			else {
-				const u8 *p = (const u8 *)(xi+j);
-				X = (long)GETU32(p);
-			}
-		}
-		else
-			X = xi[j];
+		X = HTOBE64(xi[j]);
 
 		for (i=0; i<8*sizeof(long); ++i, X<<=1) {
 			u64 M = (u64)(X>>(8*sizeof(long)-1));
@@ -623,23 +561,8 @@ static void gcm_gmult_1bit(u64 Xi[2],const u64 H[2])
 		}
 	}
 
-	if (is_endian.little) {
-#ifdef BSWAP8
-		Xi[0] = BSWAP8(Z.hi);
-		Xi[1] = BSWAP8(Z.lo);
-#else
-		u8 *p = (u8 *)Xi;
-		u32 v;
-		v = (u32)(Z.hi>>32);	PUTU32(p,v);
-		v = (u32)(Z.hi);	PUTU32(p+4,v);
-		v = (u32)(Z.lo>>32);	PUTU32(p+8,v);
-		v = (u32)(Z.lo);	PUTU32(p+12,v);
-#endif
-	}
-	else {
-		Xi[0] = Z.hi;
-		Xi[1] = Z.lo;
-	}
+	Xi[0] = HTOBE64(Z.hi);
+	Xi[1] = HTOBE64(Z.lo);
 }
 #define GCM_MUL(ctx,Xi)	  gcm_gmult_1bit(ctx->Xi.u,ctx->H.u)
 
@@ -828,7 +751,6 @@ void CRYPTO_gcm128_init(GCM128_CONTEXT *ctx,void *key,block128_f block)
 
 void CRYPTO_gcm128_setiv(GCM128_CONTEXT *ctx,const unsigned char *iv,size_t len)
 {
-	const union { long one; char little; } is_endian = {1};
 	unsigned int ctr;
 #ifdef GCM_FUNCREF_4BIT
 	void (*gcm_gmult_p)(u64 Xi[2],const u128 Htable[16])	= ctx->gmult;
@@ -863,45 +785,16 @@ void CRYPTO_gcm128_setiv(GCM128_CONTEXT *ctx,const unsigned char *iv,size_t len)
 			GCM_MUL(ctx,Yi);
 		}
 		len0 <<= 3;
-		if (is_endian.little) {
-#ifdef BSWAP8
-			ctx->Yi.u[1]  ^= BSWAP8(len0);
-#else
-			ctx->Yi.c[8]  ^= (u8)(len0>>56);
-			ctx->Yi.c[9]  ^= (u8)(len0>>48);
-			ctx->Yi.c[10] ^= (u8)(len0>>40);
-			ctx->Yi.c[11] ^= (u8)(len0>>32);
-			ctx->Yi.c[12] ^= (u8)(len0>>24);
-			ctx->Yi.c[13] ^= (u8)(len0>>16);
-			ctx->Yi.c[14] ^= (u8)(len0>>8);
-			ctx->Yi.c[15] ^= (u8)(len0);
-#endif
-		}
-		else
-			ctx->Yi.u[1]  ^= len0;
+		ctx->Yi.u[1]  ^= HTOBE64(len0);
 
 		GCM_MUL(ctx,Yi);
 
-		if (is_endian.little)
-#ifdef BSWAP4
-			ctr = BSWAP4(ctx->Yi.d[3]);
-#else
-			ctr = GETU32(ctx->Yi.c+12);
-#endif
-		else
-			ctr = ctx->Yi.d[3];
+		ctr = BE32TOH(ctx->Yi.d[3]);
 	}
 
 	(*ctx->block)(ctx->Yi.c,ctx->EK0.c,ctx->key);
 	++ctr;
-	if (is_endian.little)
-#ifdef BSWAP4
-		ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-		PUTU32(ctx->Yi.c+12,ctr);
-#endif
-	else
-		ctx->Yi.d[3] = ctr;
+	ctx->Yi.d[3] = HTOBE32(ctr);
 }
 
 int CRYPTO_gcm128_aad(GCM128_CONTEXT *ctx,const unsigned char *aad,size_t len)
@@ -965,7 +858,6 @@ int CRYPTO_gcm128_encrypt(GCM128_CONTEXT *ctx,
 		const unsigned char *in, unsigned char *out,
 		size_t len)
 {
-	const union { long one; char little; } is_endian = {1};
 	unsigned int n, ctr;
 	size_t i;
 	u64        mlen  = ctx->len.u[1];
@@ -993,14 +885,7 @@ int CRYPTO_gcm128_encrypt(GCM128_CONTEXT *ctx,
 		ctx->ares = 0;
 	}
 
-	if (is_endian.little)
-#ifdef BSWAP4
-		ctr = BSWAP4(ctx->Yi.d[3]);
-#else
-		ctr = GETU32(ctx->Yi.c+12);
-#endif
-	else
-		ctr = ctx->Yi.d[3];
+	ctr = BE32TOH(ctx->Yi.d[3]);
 
 	n = ctx->mres;
 #if !defined(OPENSSL_SMALL_FOOTPRINT)
@@ -1031,14 +916,7 @@ int CRYPTO_gcm128_encrypt(GCM128_CONTEXT *ctx,
 
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			for (i=0; i<16/sizeof(size_t); ++i)
 				out_t[i] = in_t[i] ^ ctx->EKi.t[i];
 			out += 16;
@@ -1057,14 +935,7 @@ int CRYPTO_gcm128_encrypt(GCM128_CONTEXT *ctx,
 
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			for (i=0; i<16/sizeof(size_t); ++i)
 				out_t[i] = in_t[i] ^ ctx->EKi.t[i];
 			out += 16;
@@ -1080,14 +951,7 @@ int CRYPTO_gcm128_encrypt(GCM128_CONTEXT *ctx,
 
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			for (i=0; i<16/sizeof(size_t); ++i)
 				ctx->Xi.t[i] ^=
 				out_t[i] = in_t[i]^ctx->EKi.t[i];
@@ -1100,14 +964,7 @@ int CRYPTO_gcm128_encrypt(GCM128_CONTEXT *ctx,
 		if (len) {
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			while (len--) {
 				ctx->Xi.c[n] ^= out[n] = in[n]^ctx->EKi.c[n];
 				++n;
@@ -1122,14 +979,7 @@ int CRYPTO_gcm128_encrypt(GCM128_CONTEXT *ctx,
 		if (n==0) {
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 		}
 		ctx->Xi.c[n] ^= out[i] = in[i]^ctx->EKi.c[n];
 		n = (n+1)%16;
@@ -1145,7 +995,6 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx,
 		const unsigned char *in, unsigned char *out,
 		size_t len)
 {
-	const union { long one; char little; } is_endian = {1};
 	unsigned int n, ctr;
 	size_t i;
 	u64        mlen  = ctx->len.u[1];
@@ -1170,14 +1019,7 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx,
 		ctx->ares = 0;
 	}
 
-	if (is_endian.little)
-#ifdef BSWAP4
-		ctr = BSWAP4(ctx->Yi.d[3]);
-#else
-		ctr = GETU32(ctx->Yi.c+12);
-#endif
-	else
-		ctr = ctx->Yi.d[3];
+	ctr = BE32TOH(ctx->Yi.d[3]);
 
 	n = ctx->mres;
 #if !defined(OPENSSL_SMALL_FOOTPRINT)
@@ -1211,14 +1053,7 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx,
 
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			for (i=0; i<16/sizeof(size_t); ++i)
 				out_t[i] = in_t[i]^ctx->EKi.t[i];
 			out += 16;
@@ -1235,14 +1070,7 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx,
 
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			for (i=0; i<16/sizeof(size_t); ++i)
 				out_t[i] = in_t[i]^ctx->EKi.t[i];
 			out += 16;
@@ -1257,14 +1085,7 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx,
 
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			for (i=0; i<16/sizeof(size_t); ++i) {
 				size_t c = in[i];
 				out[i] = c^ctx->EKi.t[i];
@@ -1279,14 +1100,7 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx,
 		if (len) {
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 			while (len--) {
 				u8 c = in[n];
 				ctx->Xi.c[n] ^= c;
@@ -1304,14 +1118,7 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx,
 		if (n==0) {
 			(*block)(ctx->Yi.c,ctx->EKi.c,key);
 			++ctr;
-			if (is_endian.little)
-#ifdef BSWAP4
-				ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-				PUTU32(ctx->Yi.c+12,ctr);
-#endif
-			else
-				ctx->Yi.d[3] = ctr;
+			ctx->Yi.d[3] = HTOBE32(ctr);
 		}
 		c = in[i];
 		out[i] = c^ctx->EKi.c[n];
@@ -1329,7 +1136,6 @@ int CRYPTO_gcm128_encrypt_ctr32(GCM128_CONTEXT *ctx,
 		const unsigned char *in, unsigned char *out,
 		size_t len, ctr128_f stream)
 {
-	const union { long one; char little; } is_endian = {1};
 	unsigned int n, ctr;
 	size_t i;
 	u64   mlen = ctx->len.u[1];
@@ -1353,14 +1159,7 @@ int CRYPTO_gcm128_encrypt_ctr32(GCM128_CONTEXT *ctx,
 		ctx->ares = 0;
 	}
 
-	if (is_endian.little)
-#ifdef BSWAP4
-		ctr = BSWAP4(ctx->Yi.d[3]);
-#else
-		ctr = GETU32(ctx->Yi.c+12);
-#endif
-	else
-		ctr = ctx->Yi.d[3];
+	ctr = BE32TOH(ctx->Yi.d[3]);
 
 	n = ctx->mres;
 	if (n) {
@@ -1379,14 +1178,7 @@ int CRYPTO_gcm128_encrypt_ctr32(GCM128_CONTEXT *ctx,
 	while (len>=GHASH_CHUNK) {
 		(*stream)(in,out,GHASH_CHUNK/16,key,ctx->Yi.c);
 		ctr += GHASH_CHUNK/16;
-		if (is_endian.little)
-#ifdef BSWAP4
-			ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-			PUTU32(ctx->Yi.c+12,ctr);
-#endif
-		else
-			ctx->Yi.d[3] = ctr;
+		ctx->Yi.d[3] = HTOBE32(ctr);
 		GHASH(ctx,out,GHASH_CHUNK);
 		out += GHASH_CHUNK;
 		in  += GHASH_CHUNK;
@@ -1398,14 +1190,7 @@ int CRYPTO_gcm128_encrypt_ctr32(GCM128_CONTEXT *ctx,
 
 		(*stream)(in,out,j,key,ctx->Yi.c);
 		ctr += (unsigned int)j;
-		if (is_endian.little)
-#ifdef BSWAP4
-			ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-			PUTU32(ctx->Yi.c+12,ctr);
-#endif
-		else
-			ctx->Yi.d[3] = ctr;
+		ctx->Yi.d[3] = HTOBE32(ctr);
 		in  += i;
 		len -= i;
 #if defined(GHASH)
@@ -1422,14 +1207,7 @@ int CRYPTO_gcm128_encrypt_ctr32(GCM128_CONTEXT *ctx,
 	if (len) {
 		(*ctx->block)(ctx->Yi.c,ctx->EKi.c,key);
 		++ctr;
-		if (is_endian.little)
-#ifdef BSWAP4
-			ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-			PUTU32(ctx->Yi.c+12,ctr);
-#endif
-		else
-			ctx->Yi.d[3] = ctr;
+		ctx->Yi.d[3] = HTOBE32(ctr);
 		while (len--) {
 			ctx->Xi.c[n] ^= out[n] = in[n]^ctx->EKi.c[n];
 			++n;
@@ -1444,7 +1222,6 @@ int CRYPTO_gcm128_decrypt_ctr32(GCM128_CONTEXT *ctx,
 		const unsigned char *in, unsigned char *out,
 		size_t len,ctr128_f stream)
 {
-	const union { long one; char little; } is_endian = {1};
 	unsigned int n, ctr;
 	size_t i;
 	u64   mlen = ctx->len.u[1];
@@ -1468,14 +1245,7 @@ int CRYPTO_gcm128_decrypt_ctr32(GCM128_CONTEXT *ctx,
 		ctx->ares = 0;
 	}
 
-	if (is_endian.little)
-#ifdef BSWAP4
-		ctr = BSWAP4(ctx->Yi.d[3]);
-#else
-		ctr = GETU32(ctx->Yi.c+12);
-#endif
-	else
-		ctr = ctx->Yi.d[3];
+	ctr = BE32TOH(ctx->Yi.d[3]);
 
 	n = ctx->mres;
 	if (n) {
@@ -1497,14 +1267,7 @@ int CRYPTO_gcm128_decrypt_ctr32(GCM128_CONTEXT *ctx,
 		GHASH(ctx,in,GHASH_CHUNK);
 		(*stream)(in,out,GHASH_CHUNK/16,key,ctx->Yi.c);
 		ctr += GHASH_CHUNK/16;
-		if (is_endian.little)
-#ifdef BSWAP4
-			ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-			PUTU32(ctx->Yi.c+12,ctr);
-#endif
-		else
-			ctx->Yi.d[3] = ctr;
+		ctx->Yi.d[3] = HTOBE32(ctr);
 		out += GHASH_CHUNK;
 		in  += GHASH_CHUNK;
 		len -= GHASH_CHUNK;
@@ -1527,14 +1290,7 @@ int CRYPTO_gcm128_decrypt_ctr32(GCM128_CONTEXT *ctx,
 #endif
 		(*stream)(in,out,j,key,ctx->Yi.c);
 		ctr += (unsigned int)j;
-		if (is_endian.little)
-#ifdef BSWAP4
-			ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-			PUTU32(ctx->Yi.c+12,ctr);
-#endif
-		else
-			ctx->Yi.d[3] = ctr;
+		ctx->Yi.d[3] = HTOBE32(ctr);
 		out += i;
 		in  += i;
 		len -= i;
@@ -1542,14 +1298,7 @@ int CRYPTO_gcm128_decrypt_ctr32(GCM128_CONTEXT *ctx,
 	if (len) {
 		(*ctx->block)(ctx->Yi.c,ctx->EKi.c,key);
 		++ctr;
-		if (is_endian.little)
-#ifdef BSWAP4
-			ctx->Yi.d[3] = BSWAP4(ctr);
-#else
-			PUTU32(ctx->Yi.c+12,ctr);
-#endif
-		else
-			ctx->Yi.d[3] = ctr;
+		ctx->Yi.d[3] = HTOBE32(ctr);
 		while (len--) {
 			u8 c = in[n];
 			ctx->Xi.c[n] ^= c;
@@ -1565,7 +1314,6 @@ int CRYPTO_gcm128_decrypt_ctr32(GCM128_CONTEXT *ctx,
 int CRYPTO_gcm128_finish(GCM128_CONTEXT *ctx,const unsigned char *tag,
 			size_t len)
 {
-	const union { long one; char little; } is_endian = {1};
 	u64 alen = ctx->len.u[0]<<3;
 	u64 clen = ctx->len.u[1]<<3;
 #ifdef GCM_FUNCREF_4BIT
@@ -1575,20 +1323,8 @@ int CRYPTO_gcm128_finish(GCM128_CONTEXT *ctx,const unsigned char *tag,
 	if (ctx->mres || ctx->ares)
 		GCM_MUL(ctx,Xi);
 
-	if (is_endian.little) {
-#ifdef BSWAP8
-		alen = BSWAP8(alen);
-		clen = BSWAP8(clen);
-#else
-		u8 *p = ctx->len.c;
-
-		ctx->len.u[0] = alen;
-		ctx->len.u[1] = clen;
-
-		alen = (u64)GETU32(p)  <<32|GETU32(p+4);
-		clen = (u64)GETU32(p+8)<<32|GETU32(p+12);
-#endif
-	}
+	alen = BE64TOH(alen);
+	clen = BE64TOH(clen);
 
 	ctx->Xi.u[0] ^= alen;
 	ctx->Xi.u[1] ^= clen;
