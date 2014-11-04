@@ -65,9 +65,9 @@ main(int argc, char *argv[])
 
   if (num_failed != 0) {
     fprintf(stdout, "%d tests failed!\n", num_failed);
-    return EXIT_SUCCESS;
+    return EXIT_FAILURE;
   }
 
   fprintf(stdout, "ok (ran %d tests)\n", num_all);
-  return EXIT_FAILURE;
+  return EXIT_SUCCESS;
 }

@@ -396,6 +396,10 @@ test_constant_time: $(CONSTTIMETEST)$(EXE_EXT)
 	@echo "Test constant time utilites"
 	../util/shlib_wrap.sh ./$(CONSTTIMETEST)
 
+test_byte_order: $(BYTEORDERTEST)$(EXE_EXT)
+	@echo "Test byte order swapping"
+	../util/shlib_wrap.sh ./$(BYTEORDERTEST)
+
 lint:
 	lint -DLINT $(INCLUDES) $(SRC)>fluff
 
