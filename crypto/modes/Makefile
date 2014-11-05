@@ -17,7 +17,7 @@ ASFLAGS= $(INCLUDES) $(ASFLAG)
 AFLAGS= $(ASFLAGS)
 
 GENERAL=Makefile
-TEST=
+TEST=gcm128_test.c
 APPS=
 
 LIB=$(TOP)/libcrypto.a
