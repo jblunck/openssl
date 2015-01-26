@@ -402,7 +402,7 @@ libcrypto$(SHLIB_EXT): libcrypto.a build_fips
 		exit 1; \
 	fi
 
-libssl$(SHLIB_EXT): libcrypto$(SHLIB_EXT) libssl.a
+libssl$(SHLIB_EXT): libssl.a
 	@if [ "$(SHLIB_TARGET)" != "" ]; then \
 		$(MAKE) SHLIBDIRS=ssl SHLIBDEPS='-lcrypto' build-shared; \
 	else \
